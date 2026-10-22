@@ -1,26 +1,166 @@
+@import "./index.css";
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
+  --font-serif: var(--font-cormorant), "Cormorant Garamond", Georgia, serif;
+  --font-sans: var(--font-dm-sans), "DM Sans", system-ui, -apple-system, sans-serif;
   --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
+  background-color: var(--background);
+  color: var(--text);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  background-color: var(--background);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* ── Utility Semantic Helpers ──────────────────────────────────────────────── */
+.bg-warm-bg { background-color: var(--background); }
+.bg-warm-card { background-color: var(--card); }
+.text-warm-text { color: var(--text); }
+.text-warm-muted { color: var(--text-muted); }
+.border-warm { border-color: var(--border); }
+.text-brand-green { color: var(--primary); }
+.bg-brand-green { background-color: var(--primary); }
+
+.reader-content {
+  font-family: var(--font-serif);
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+
+.reader-content h1,
+.reader-content h2,
+.reader-content h3,
+.reader-content h4,
+.reader-content h5,
+.reader-content h6 {
+  margin: 1.5em 0 0.65em;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.reader-content h1 { font-size: 1.8em; }
+.reader-content h2 { font-size: 1.5em; }
+.reader-content h3 { font-size: 1.25em; }
+
+.reader-content p {
+  margin: 0 0 1em;
+}
+
+.reader-content img {
+  height: auto;
+  max-width: 100%;
+}
+
+.reader-content a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.reader-content table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* Hide scrollbar utility while maintaining keyboard and touch scrolling */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Respect user system motion preferences per AGENTS.md Section 6 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── In-book reader highlights ──────────────────────────────────────────────── */
+
+mark.nalexis-hl {
+  border-radius: 2px;
+  padding: 0 1px;
+  cursor: default;
+  color: inherit;
+  transition: box-shadow 0.15s ease;
+}
+
+mark.nalexis-hl-amber {
+  background-color: rgba(251, 191, 36, 0.38);
+}
+
+mark.nalexis-hl-emerald {
+  background-color: rgba(52, 211, 153, 0.33);
+}
+
+mark.nalexis-hl-sapphire {
+  background-color: rgba(56, 189, 248, 0.33);
+}
+
+mark.nalexis-hl-rose {
+  background-color: rgba(251, 113, 133, 0.33);
+}
+
+/* Richer tint for dark/oled themes */
+[data-reader-theme="dark"] mark.nalexis-hl-amber,
+[data-reader-theme="oled"] mark.nalexis-hl-amber {
+  background-color: rgba(251, 191, 36, 0.52);
+}
+
+[data-reader-theme="dark"] mark.nalexis-hl-emerald,
+[data-reader-theme="oled"] mark.nalexis-hl-emerald {
+  background-color: rgba(52, 211, 153, 0.44);
+}
+
+[data-reader-theme="dark"] mark.nalexis-hl-sapphire,
+[data-reader-theme="oled"] mark.nalexis-hl-sapphire {
+  background-color: rgba(56, 189, 248, 0.44);
+}
+
+[data-reader-theme="dark"] mark.nalexis-hl-rose,
+[data-reader-theme="oled"] mark.nalexis-hl-rose {
+  background-color: rgba(251, 113, 133, 0.44);
+}
+
+/* Focus pulse when jumping to a highlight from the sidebar */
+@keyframes nalexis-hl-pulse {
+  0% {
+    outline: 3px solid rgba(251, 191, 36, 0.8);
+    outline-offset: 2px;
+  }
+
+  100% {
+    outline: 3px solid rgba(251, 191, 36, 0);
+    outline-offset: 6px;
+  }
+}
+
+mark.nalexis-hl.nalexis-hl-focused {
+  animation: nalexis-hl-pulse 0.7s ease-out forwards;
 }

@@ -1,0 +1,88 @@
+/* ── Nalexis Design System Tokens ──────────────────────────────────────────
+   Warm, calm, premium reading-app palette.
+   All core colors defined here as CSS variables for both light and dark themes.
+   ────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Surface & Backgrounds */
+  --background: #F7F2EA;           /* Warm cream page background */
+  --background-alt: #F1ECE2;       /* Subtle darker cream for contrast bands */
+  --card: #FDFAF5;                 /* Slightly lighter cream for cards */
+  --card-hover: #FFFFFF;           /* Card hover tint */
+  --card-subtle: #F3ECE0;          /* Soft inner container / well */
+
+  /* Text & Foreground */
+  --text: #1F2421;                 /* Warm deep dark typography */
+  --text-muted: #6B726C;           /* Secondary / body muted typography */
+  --text-subtle: #8A9089;          /* Tertiary / small label typography */
+
+  /* Borders & Dividers */
+  --border: #E8E2D5;               /* Thin soft border */
+  --border-subtle: #EFE9DE;        /* Very light divider */
+  --border-focus: #0F4025;         /* Active / focus outline */
+
+  /* Primary Accent: Deep Forest Green */
+  --primary: #0F4025;              /* Exact deep forest green from screenshots */
+  --primary-hover: #165633;        /* Slightly lighter forest on hover */
+  --primary-active: #0B301B;       /* Deep pressed state */
+  --primary-foreground: #FFFFFF;   /* White text on primary button */
+  --primary-subtle: rgba(15, 64, 37, 0.08); /* Green tint for badges/accents */
+
+  /* Eyebrows & Accents */
+  --eyebrow: #0F4025;              /* Uppercase eyebrow label */
+  --accent-gold: #C28B38;          /* Warm golden accent for stars/bookmarks */
+
+  /* Badges & Tags */
+  --badge-bg: #EAE3D6;
+  --badge-text: #2C3530;
+  --badge-green-bg: #E3EDE6;
+  --badge-green-text: #0F4025;
+
+  /* Card Radius & Shadows */
+  --radius-card: 12px;
+  --radius-btn: 8px;
+  --shadow-card: 0 1px 3px rgba(31, 36, 33, 0.04), 0 4px 12px rgba(31, 36, 33, 0.02);
+  --shadow-card-hover: 0 4px 16px rgba(31, 36, 33, 0.08), 0 1px 3px rgba(31, 36, 33, 0.04);
+}
+
+.dark {
+  /* Surface & Backgrounds */
+  --background: #181614;           /* Warm dark brown/charcoal (not pure black) */
+  --background-alt: #1F1C19;       /* Slightly lighter dark container */
+  --card: #23201C;                 /* Slightly lighter warm card background */
+  --card-hover: #2B2723;           /* Elevated card on hover */
+  --card-subtle: #1C1917;          /* Inset wells */
+
+  /* Text & Foreground */
+  --text: #F7F2EA;                 /* Warm cream text */
+  --text-muted: #B8B0A2;           /* Soft readable cream-gray (WCAG AA compliant) */
+  --text-subtle: #8A8376;          /* Muted meta labels */
+
+  /* Borders & Dividers */
+  --border: #38332C;               /* Subtle warm charcoal border */
+  --border-subtle: #2D2823;        /* Soft divider */
+  --border-focus: #52B178;         /* Focus outline */
+
+  /* Primary Accent: Softer, lighter sage-forest green for high readability */
+  --primary: #449B67;              /* Softer readable green against dark background */
+  --primary-hover: #54B47B;        /* Lighter green hover */
+  --primary-active: #388456;       /* Active state */
+  --primary-foreground: #09170E;   /* Dark text on light green button for contrast */
+  --primary-subtle: rgba(68, 155, 103, 0.15); /* Soft green wash */
+
+  /* Eyebrows & Accents */
+  --eyebrow: #5AB97E;              /* Readable green eyebrow */
+  --accent-gold: #E5A84D;
+
+  /* Badges & Tags */
+  --badge-bg: #2E2924;
+  --badge-text: #E5DDD0;
+  --badge-green-bg: #1B2F22;
+  --badge-green-text: #5AB97E;
+
+  /* Card Radius & Shadows */
+  --radius-card: 12px;
+  --radius-btn: 8px;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2);
+  --shadow-card-hover: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
