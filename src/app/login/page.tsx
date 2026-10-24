@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BookOpen, AlertCircle } from "lucide-react";
 import { signIn } from "@/app/actions/auth";
+import { GoogleAuthButton } from "@/components/auth/GoogleAuthButton";
 
 interface LoginPageProps {
   searchParams: Promise<{ error?: string }>;
@@ -53,6 +54,19 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               </div>
             </div>
           )}
+
+          {/* OAuth option */}
+          <GoogleAuthButton mode="signin" />
+
+          {/* Divider */}
+          <div className="relative my-6 flex items-center justify-center">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-zinc-200 dark:border-zinc-800" />
+            </div>
+            <span className="relative bg-white px-2 text-xs uppercase tracking-wider text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
+              Or continue with email
+            </span>
+          </div>
 
           {/* Standard credentials form */}
           <form action={signIn} className="flex flex-col gap-4">

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BookOpen, AlertCircle } from "lucide-react";
 import { signUp } from "@/app/actions/auth";
+import { GoogleAuthButton } from "@/components/auth/GoogleAuthButton";
 
 interface SignupPageProps {
   searchParams: Promise<{ error?: string }>;
@@ -48,6 +49,19 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
               </div>
             </div>
           )}
+
+          {/* OAuth option */}
+          <GoogleAuthButton mode="signup" />
+
+          {/* Divider */}
+          <div className="relative my-6 flex items-center justify-center">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-zinc-200 dark:border-zinc-800" />
+            </div>
+            <span className="relative bg-white px-2 text-xs uppercase tracking-wider text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
+              Or register with email
+            </span>
+          </div>
 
           <form action={signUp} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
