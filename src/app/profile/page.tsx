@@ -1,8 +1,8 @@
 import ProfileClient from "./ProfileClient";
 
 export const metadata = {
-  title: "Profile | Living Library - Nalexis",
-  description: "Your personal Living Library, reading journey, and curated shelves.",
+  title: "My Literary Profile | Nalexis",
+  description: "Your personal literary identity, reading philosophy, showcase shelves, and reading journey.",
 };
 
 export default function ProfilePage() {

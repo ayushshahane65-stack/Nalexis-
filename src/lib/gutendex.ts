@@ -1,3 +1,5 @@
+import { withCache } from "@/lib/server-cache";
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 /** The normalised shape we expose to the rest of the app. */
@@ -69,18 +71,30 @@ const BASE = "https://gutendex.com";
 
 /**
  * Search Project Gutenberg books by free-text query.
- * Returns up to 32 results (one page from the Gutendex API).
+ * Cached for 10 minutes; 25-second timeout to handle slow Gutendex upstream.
  */
 export async function searchGutendex(q: string): Promise<GutenbergBook[]> {
-  const url = `${BASE}/books/?search=${encodeURIComponent(q)}`;
-  const res = await fetch(url, {
-    signal: AbortSignal.timeout(12000),
-    headers: { "User-Agent": "Nalexis/1.0 (book reader)" },
-    next: { revalidate: 300 },
+  const cacheKey = `gutendex_search_${q.toLowerCase().trim()}`;
+
+  return withCache(cacheKey, 10 * 60 * 1000, async () => {
+    const url = `${BASE}/books/?search=${encodeURIComponent(q)}`;
+    try {
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(25000),
+        headers: { "User-Agent": "Nalexis/1.0 (book reader)" },
+        next: { revalidate: 600 },
+      });
+      if (!res.ok) {
+        console.warn(`[Gutendex] Search HTTP ${res.status} for query "${q}"`);
+        return [];
+      }
+      const data: GutendexResponse = await res.json();
+      return Array.isArray(data.results) ? data.results.map(formatBook) : [];
+    } catch (error) {
+      console.warn(`[Gutendex] Search request failed/timed out for query "${q}":`, error instanceof Error ? error.message : error);
+      return [];
+    }
   });
-  if (!res.ok) throw new Error(`Gutendex search failed: ${res.status}`);
-  const data: GutendexResponse = await res.json();
-  return data.results.map(formatBook);
 }
 
 /**
@@ -91,40 +105,57 @@ export async function browseGutendex(
   category: string,
   page: number,
 ): Promise<GutenbergBook[]> {
-  // "popular" = no topic filter, just sorted by downloads
-  const topicParam = category === "popular" ? "" : `&topic=${encodeURIComponent(category)}`;
-  const url = `${BASE}/books/?languages=en${topicParam}&page=${page}`;
+  const cacheKey = `gutendex_browse_${category.toLowerCase().trim()}_p${page}`;
 
-  const res = await fetch(url, {
-    signal: AbortSignal.timeout(12000),
-    headers: { "User-Agent": "Nalexis/1.0 (book reader)" },
-    next: { revalidate: 300 },
+  return withCache(cacheKey, 10 * 60 * 1000, async () => {
+    // "popular" = no topic filter, just sorted by downloads
+    const topicParam = category === "popular" ? "" : `&topic=${encodeURIComponent(category)}`;
+    const url = `${BASE}/books/?languages=en${topicParam}&page=${page}`;
+
+    try {
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(25000),
+        headers: { "User-Agent": "Nalexis/1.0 (book reader)" },
+        next: { revalidate: 600 },
+      });
+      if (!res.ok) {
+        console.warn(`[Gutendex] Browse HTTP ${res.status} for category "${category}"`);
+        return [];
+      }
+      const data: GutendexResponse = await res.json();
+
+      if (!Array.isArray(data.results)) return [];
+
+      return data.results
+        .filter((b) => {
+          const hasReadable =
+            "text/html" in b.formats ||
+            "text/html; charset=utf-8" in b.formats ||
+            "application/epub+zip" in b.formats;
+          return hasReadable;
+        })
+        .map(formatBook);
+    } catch (error) {
+      console.warn(`[Gutendex] Browse request failed/timed out for category "${category}":`, error instanceof Error ? error.message : error);
+      return [];
+    }
   });
-  if (!res.ok) throw new Error(`Gutendex browse failed: ${res.status}`);
-  const data: GutendexResponse = await res.json();
-
-  // Keep only Text books with at least one readable format
-  return data.results
-    .filter((b) => {
-      const hasReadable =
-        "text/html" in b.formats ||
-        "text/html; charset=utf-8" in b.formats ||
-        "application/epub+zip" in b.formats;
-      return hasReadable;
-    })
-    .map(formatBook);
 }
 
 /**
  * Fetch a single book by its numeric Gutenberg ID.
  */
 export async function getGutendexBook(id: number): Promise<GutenbergBook> {
-  const res = await fetch(`${BASE}/books/${id}/`, {
-    signal: AbortSignal.timeout(30000),
-    headers: { "User-Agent": "Nalexis/1.0 (book reader)" },
-    next: { revalidate: 3600 },
+  const cacheKey = `gutendex_book_${id}`;
+
+  return withCache(cacheKey, 60 * 60 * 1000, async () => {
+    const res = await fetch(`${BASE}/books/${id}/`, {
+      signal: AbortSignal.timeout(25000),
+      headers: { "User-Agent": "Nalexis/1.0 (book reader)" },
+      next: { revalidate: 3600 },
+    });
+    if (!res.ok) throw new Error(`Book not found: ${id}`);
+    const data: GutendexBook = await res.json();
+    return formatBook(data);
   });
-  if (!res.ok) throw new Error(`Book not found: ${id}`);
-  const data: GutendexBook = await res.json();
-  return formatBook(data);
 }

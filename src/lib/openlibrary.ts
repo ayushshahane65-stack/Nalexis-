@@ -1,3 +1,5 @@
+import { withCache } from "@/lib/server-cache";
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 /** Access level reported by Open Library. */
@@ -96,84 +98,104 @@ function formatDoc(doc: OLDoc): OpenLibraryBook {
 
 export async function getOpenLibraryBook(id: string): Promise<OpenLibraryBook> {
   const workId = id.replace(/^\/?works\//, "");
-  const [response, searchResponse] = await Promise.all([
-    fetch(`${BASE}/works/${encodeURIComponent(workId)}.json`, {
-      signal: AbortSignal.timeout(15000),
-      headers: { "User-Agent": UA },
-      next: { revalidate: 3600 },
-    }),
-    fetch(
-      `${BASE}/search.json?q=${encodeURIComponent(`/works/${workId}`)}&limit=50&fields=key,title,author_name,cover_i,ebook_access,ia,first_publish_year,subject,language`,
-      {
-        signal: AbortSignal.timeout(15000),
-        headers: { "User-Agent": UA },
-        next: { revalidate: 3600 },
-      },
-    ),
-  ]);
-  if (!response.ok) throw new Error(`Open Library book failed: ${response.status}`);
-  if (!searchResponse.ok) throw new Error(`Open Library access lookup failed: ${searchResponse.status}`);
-  const work: OLWorkResponse = await response.json();
-  const searchData: OLResponse = await searchResponse.json();
-  const doc = searchData.docs.find((entry) => entry.key === `/works/${workId}`);
-  const mapped = doc ? formatDoc(doc) : null;
+  const cacheKey = `ol_work_${workId}`;
 
-  const authorKey = work.authors?.[0]?.author?.key;
-  let author = mapped?.author ?? "Unknown";
-  if (authorKey) {
-    const authorResponse = await fetch(`${BASE}${authorKey}.json`, {
-      signal: AbortSignal.timeout(15000),
+  return withCache(cacheKey, 60 * 60 * 1000, async () => {
+    // 1. Fetch work record (primary requirement)
+    const workRes = await fetch(`${BASE}/works/${encodeURIComponent(workId)}.json`, {
+      signal: AbortSignal.timeout(20000),
       headers: { "User-Agent": UA },
       next: { revalidate: 3600 },
     });
-    if (authorResponse.ok) {
-      const authorData: { name?: string } = await authorResponse.json();
-      author = authorData.name ?? author;
+
+    if (!workRes.ok) {
+      throw new Error(`Open Library work failed: ${workRes.status}`);
     }
-  }
+    const work: OLWorkResponse = await workRes.json();
 
-  const description =
-    typeof work.description === "string" ? work.description : work.description?.value ?? "";
-  const coverId = work.covers?.find((cover) => cover > 0);
+    // 2. Concurrently attempt access lookup and author name lookup
+    const searchUrl = `${BASE}/search.json?q=${encodeURIComponent(`/works/${workId}`)}&limit=10&fields=key,title,author_name,cover_i,ebook_access,ia,first_publish_year,subject,language`;
 
-  return {
-    id: work.key ?? `/works/${workId}`,
-    title: work.title,
-    author,
-    cover: coverId ? `${COVERS}/${coverId}-M.jpg` : mapped?.cover ?? null,
-    readUrl: (mapped?.access === "public" || mapped?.access === "borrowable") ? mapped?.readUrl ?? null : null,
-    epubUrl: null,
-    downloads: 0,
-    source: "openlibrary",
-    access: mapped?.access ?? "no_ebook",
-    description,
-    subjects: work.subjects?.slice(0, 10) ?? mapped?.subjects ?? [],
-    language: mapped?.language ?? "EN",
-    year: mapped?.year,
-  };
+    const authorKey = work.authors?.[0]?.author?.key;
+    const authorUrl = authorKey ? `${BASE}${authorKey}.json` : null;
+
+    const [searchSettled, authorSettled] = await Promise.allSettled([
+      fetch(searchUrl, {
+        signal: AbortSignal.timeout(15000),
+        headers: { "User-Agent": UA },
+        next: { revalidate: 3600 },
+      }).then((r) => (r.ok ? (r.json() as Promise<OLResponse>) : null)),
+
+      authorUrl
+        ? fetch(authorUrl, {
+            signal: AbortSignal.timeout(10000),
+            headers: { "User-Agent": UA },
+            next: { revalidate: 86400 },
+          }).then((r) => (r.ok ? (r.json() as Promise<{ name?: string }>) : null))
+        : Promise.resolve(null),
+    ]);
+
+    const searchData = searchSettled.status === "fulfilled" ? searchSettled.value : null;
+    const authorData = authorSettled.status === "fulfilled" ? authorSettled.value : null;
+
+    const doc = searchData?.docs?.find((entry) => entry.key === `/works/${workId}`) ?? searchData?.docs?.[0];
+    const mapped = doc ? formatDoc(doc) : null;
+
+    const author = authorData?.name ?? mapped?.author ?? "Unknown";
+    const description =
+      typeof work.description === "string" ? work.description : work.description?.value ?? "";
+    const coverId = work.covers?.find((cover) => cover > 0);
+
+    return {
+      id: work.key ?? `/works/${workId}`,
+      title: work.title,
+      author,
+      cover: coverId ? `${COVERS}/${coverId}-M.jpg` : mapped?.cover ?? null,
+      readUrl: (mapped?.access === "public" || mapped?.access === "borrowable") ? mapped?.readUrl ?? null : null,
+      epubUrl: null,
+      downloads: 0,
+      source: "openlibrary",
+      access: mapped?.access ?? "no_ebook",
+      description,
+      subjects: work.subjects?.slice(0, 10) ?? mapped?.subjects ?? [],
+      language: mapped?.language ?? "EN",
+      year: mapped?.year,
+    };
+  });
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
  * Search Open Library books by free-text query.
- * Returns up to 20 results. Only called server-side (route handler).
+ * Returns up to 20 results. Cached for 10 minutes.
  */
 export async function searchOpenLibrary(q: string): Promise<OpenLibraryBook[]> {
-  const url =
-    `${BASE}/search.json?q=${encodeURIComponent(q)}` +
-    `&limit=20&fields=key,title,author_name,cover_i,first_publish_year,ebook_access,ia,has_fulltext`;
+  const cacheKey = `ol_search_${q.toLowerCase().trim()}`;
 
-  const res = await fetch(url, {
-    // 12-second timeout
-    signal: AbortSignal.timeout(12000),
-    headers: { "User-Agent": UA },
-    next: { revalidate: 300 }, // same 5-min cache as Gutendex
+  return withCache(cacheKey, 10 * 60 * 1000, async () => {
+    const url =
+      `${BASE}/search.json?q=${encodeURIComponent(q)}` +
+      `&limit=20&fields=key,title,author_name,cover_i,first_publish_year,ebook_access,ia,has_fulltext`;
+
+    try {
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(20000),
+        headers: { "User-Agent": UA },
+        next: { revalidate: 600 },
+      });
+
+      if (!res.ok) {
+        console.warn(`[Open Library] Search HTTP ${res.status} for query "${q}"`);
+        return [];
+      }
+      const data: OLResponse = await res.json();
+      return Array.isArray(data.docs) ? data.docs.map(formatDoc) : [];
+    } catch (error) {
+      console.warn(`[Open Library] Search request failed for query "${q}":`, error instanceof Error ? error.message : error);
+      return [];
+    }
   });
-
-  if (!res.ok) throw new Error(`Open Library search failed: ${res.status}`);
-  const data: OLResponse = await res.json();
-  return data.docs.map(formatDoc);
 }
 
 /**
@@ -184,28 +206,42 @@ export async function browseOpenLibrary(
   category: string,
   page: number,
 ): Promise<OpenLibraryBook[]> {
-  // "popular" uses a broad fiction query so we always get results
-  const q = category === "popular"
-    ? "fiction"
-    : category === "textbooks & academic"
-      ? "textbooks"
-      : `subject:${category}`;
-  const url =
-    `${BASE}/search.json?q=${encodeURIComponent(q)}` +
-    `&has_fulltext=true&limit=20&page=${page}` +
-    `&fields=key,title,author_name,cover_i,first_publish_year,ebook_access,ia,has_fulltext`;
+  const cacheKey = `ol_browse_${category.toLowerCase().trim()}_p${page}`;
 
-  const res = await fetch(url, {
-    signal: AbortSignal.timeout(12000),
-    headers: { "User-Agent": UA },
-    next: { revalidate: 300 },
+  return withCache(cacheKey, 10 * 60 * 1000, async () => {
+    // "popular" uses a broad fiction query so we always get results
+    const q = category === "popular"
+      ? "fiction"
+      : category === "textbooks & academic"
+        ? "textbooks"
+        : `subject:${category}`;
+    const url =
+      `${BASE}/search.json?q=${encodeURIComponent(q)}` +
+      `&has_fulltext=true&limit=20&page=${page}` +
+      `&fields=key,title,author_name,cover_i,first_publish_year,ebook_access,ia,has_fulltext`;
+
+    try {
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(20000),
+        headers: { "User-Agent": UA },
+        next: { revalidate: 600 },
+      });
+
+      if (!res.ok) {
+        console.warn(`[Open Library] Browse HTTP ${res.status} for category "${category}"`);
+        return [];
+      }
+      const data: OLResponse = await res.json();
+
+      if (!Array.isArray(data.docs)) return [];
+
+      // Keep only books that have an IA id and public/borrowable access
+      return data.docs
+        .filter((d) => (d.ebook_access === "public" || d.ebook_access === "borrowable") && d.ia && d.ia.length > 0)
+        .map(formatDoc);
+    } catch (error) {
+      console.warn(`[Open Library] Browse request failed for category "${category}":`, error instanceof Error ? error.message : error);
+      return [];
+    }
   });
-
-  if (!res.ok) throw new Error(`Open Library browse failed: ${res.status}`);
-  const data: OLResponse = await res.json();
-
-  // Keep only books that have an IA id and public/borrowable access
-  return data.docs
-    .filter((d) => (d.ebook_access === "public" || d.ebook_access === "borrowable") && d.ia && d.ia.length > 0)
-    .map(formatDoc);
 }

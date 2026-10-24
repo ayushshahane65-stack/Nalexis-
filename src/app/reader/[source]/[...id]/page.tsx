@@ -28,8 +28,35 @@ export default function ReaderPage({ params }: ReaderPageProps) {
   const [theme, setTheme] = useState<"light" | "dark">("light");
 
   const load = useCallback(async () => {
-    setState("loading");
     setErrorMessage(null);
+
+    // 1. Check if background prefetch has already buffered this book (0ms load!)
+    const cacheKey = `nalexis_prefetched_read_${source}_${id}`;
+    let bufferedContent: ReadResponse | null = null;
+    try {
+      const raw = sessionStorage.getItem(cacheKey);
+      if (raw) {
+        bufferedContent = JSON.parse(raw) as ReadResponse;
+      }
+    } catch {}
+
+    if (bufferedContent) {
+      setReading(bufferedContent);
+      if (bufferedContent.book) {
+        setBook(bufferedContent.book);
+      }
+      setState("success");
+
+      // Auto update library status in background
+      void fetch("/api/library", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source, book_id: id, status: "currently_reading" }),
+      }).catch(() => {});
+      return;
+    }
+
+    setState("loading");
 
     try {
       const readResponse = await fetch(`/api/read/${source}/${encodeURIComponent(id)}`);

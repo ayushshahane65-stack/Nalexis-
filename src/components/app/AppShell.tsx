@@ -13,6 +13,7 @@ import {
   PenTool,
   Settings,
   User,
+  Feather,
   LogOut,
   Menu,
   X,
@@ -31,7 +32,7 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   { icon: Home, label: "Home", href: "/home" },
   { icon: Compass, label: "Discover", href: "/discover" },
   { icon: Library, label: "My Library", href: "/library" },
-  { icon: BookOpen, label: "On Device", href: "/read" },
+  { icon: Feather, label: "Literary Profile", href: "/profile" },
   { icon: UsersRound, label: "Reading Circles", href: "/circles" },
   { icon: Users, label: "Communities", href: "/communities" },
   { icon: PenTool, label: "Authors", href: "/authors" },
@@ -39,7 +40,6 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
 
 const UTILITY_NAV_ITEMS: NavItem[] = [
   { icon: Settings, label: "Settings", href: "/settings" },
-  { icon: User, label: "Profile", href: "/profile" },
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {

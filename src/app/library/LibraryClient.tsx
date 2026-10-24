@@ -37,6 +37,7 @@ import ShelfCollage from "@/components/library/ShelfCollage";
 import EpubUploader from "@/components/library/EpubUploader";
 import { getAllUserBooksAsync, deleteUserBookAsync } from "@/lib/epub/storage";
 import type { ParsedEpub } from "@/lib/epub/types";
+import { getLocalLibraryBooks, getLocalShelves } from "@/lib/local-library";
 
 interface LibraryBookEntry {
   id: string;
@@ -114,46 +115,85 @@ export default function LibraryClient() {
       console.warn("Could not load local on-device EPUBs:", localErr);
     }
 
+    // 2. Load Local Books & Shelves first
+    const localBooks = getLocalLibraryBooks();
+    const localShelvesList = getLocalShelves();
+
+    let combinedEntries: LibraryBookEntry[] = localBooks.map((lb) => ({
+      id: `${lb.source}-${lb.book_id}`,
+      source: lb.source as BookSource,
+      book_id: lb.book_id,
+      status: lb.status,
+      progress: lb.progress || 0,
+      started_at: lb.started_at ?? null,
+      finished_at: lb.finished_at ?? null,
+      rating: lb.rating ?? null,
+      reflection: lb.reflection ?? null,
+      is_reflection_shared: Boolean(lb.is_reflection_shared),
+      is_favourite: Boolean(lb.is_favourite),
+      shelf_ids: lb.shelf_ids || [],
+      updated_at: lb.updated_at,
+      book: {
+        id: lb.book_id,
+        source: lb.source as BookSource,
+        title: lb.title || `Book ${lb.book_id}`,
+        author: lb.author || "Unknown Author",
+        cover: lb.cover || null,
+        description: "",
+        readUrl: null,
+        access: "public",
+        format: (lb.format as "pdf" | undefined),
+      } as ApiBook,
+    }));
+
+    let mergedShelves: ShelfItem[] = localShelvesList.map((ls) => ({
+      id: ls.id,
+      name: ls.name,
+      description: ls.description ?? null,
+      cover_image: null,
+      slug: ls.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+      is_public: ls.is_public,
+      is_default: ls.is_default,
+      book_count: combinedEntries.filter((b) => b.shelf_ids?.includes(ls.id)).length,
+    }));
+
     try {
-      // 2. Fetch cloud library books
+      // 3. Attempt to fetch cloud library books
       const libraryRes = await fetch("/api/library");
 
-      if (libraryRes.status === 401) {
-        // User is browsing in guest mode (not signed in)
-        setIsUnauthenticated(true);
-        setEntries([]);
-        setShelves([]);
-        return;
+      if (libraryRes.ok) {
+        const cloudEntries: LibraryBookEntry[] = await libraryRes.json();
+        // Merge cloud with local entries (cloud entries take precedence, local non-duplicates appended)
+        const cloudKeys = new Set(cloudEntries.map((c) => `${c.source}:${c.book_id}`));
+        const localOnly = combinedEntries.filter((l) => !cloudKeys.has(`${l.source}:${l.book_id}`));
+        combinedEntries = [...cloudEntries, ...localOnly];
       }
 
-      if (!libraryRes.ok) {
-        console.warn("Cloud library API returned status:", libraryRes.status);
-        setHasError(true);
-        return;
-      }
-
-      const libraryEntries: LibraryBookEntry[] = await libraryRes.json();
-
-      // 3. Fetch cloud shelves
+      // 4. Attempt to fetch cloud shelves
       const shelvesRes = await fetch("/api/shelves");
-      const shelvesData: ShelfItem[] = shelvesRes.ok ? await shelvesRes.json() : [];
-      setShelves(shelvesData);
+      if (shelvesRes.ok) {
+        const cloudShelves: ShelfItem[] = await shelvesRes.json();
+        const cloudShelfNames = new Set(cloudShelves.map((s) => s.name.toLowerCase()));
+        const uniqueLocalShelves = mergedShelves.filter((s) => !cloudShelfNames.has(s.name.toLowerCase()));
+        mergedShelves = [...cloudShelves, ...uniqueLocalShelves];
+      }
 
-      // 4. Resolve book metadata for API books in parallel
+      // 5. Resolve book metadata for any entry missing title or cover
       const enriched = await Promise.all(
-        libraryEntries.map(async (entry) => {
+        combinedEntries.map(async (entry) => {
+          if (entry.book && entry.book.title && entry.book.title !== `Book ${entry.book_id}`) {
+            return entry;
+          }
           try {
             const detailRes = await fetch(`/api/books/${entry.source}/${encodeURIComponent(entry.book_id)}`);
             if (detailRes.ok) {
               const bookData: ApiBook = await detailRes.json();
               return { ...entry, book: bookData };
             }
-          } catch {
-            // fallback minimal book
-          }
+          } catch {}
           return {
             ...entry,
-            book: {
+            book: entry.book || ({
               id: entry.book_id,
               source: entry.source,
               title: `Book ${entry.book_id}`,
@@ -162,15 +202,18 @@ export default function LibraryClient() {
               cover: null,
               readUrl: null,
               access: "public",
-            } as ApiBook,
+            } as ApiBook),
           };
         })
       );
 
       setEntries(enriched);
+      setShelves(mergedShelves);
     } catch (err) {
-      console.warn("Cloud library sync failed:", err);
-      setHasError(true);
+      console.warn("Cloud library sync note:", err);
+      // Fallback already prepared!
+      setEntries(combinedEntries);
+      setShelves(mergedShelves);
     } finally {
       setIsLoading(false);
     }

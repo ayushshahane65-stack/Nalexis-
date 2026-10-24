@@ -21,21 +21,31 @@ export async function GET(_request: Request, { params }: RouteContext) {
     const book = await getBookDetails(source as BookSource, id);
     if (!book) return NextResponse.json({ error: "Book not found." }, { status: 404 });
 
+    const cacheHeaders = {
+      "Cache-Control": "public, max-age=7200, stale-while-revalidate=86400",
+    };
+
     if (book.source === "gutenberg" && book.readUrl) {
       const content = await fetchGutenbergHtml(book.readUrl);
-      return NextResponse.json({ format: "html", content, originalUrl: book.readUrl, book });
+      return NextResponse.json(
+        { format: "html", content, originalUrl: book.readUrl, book },
+        { headers: cacheHeaders }
+      );
     }
 
     if (book.source === "openlibrary" && book.readUrl) {
       try {
         const iaId = new URL(book.readUrl).pathname.split("/").filter(Boolean).at(-1);
         if (iaId) {
-          return NextResponse.json({
-            format: "embed",
-            url: `https://archive.org/embed/${encodeURIComponent(iaId)}`,
-            originalUrl: book.readUrl,
-            book,
-          });
+          return NextResponse.json(
+            {
+              format: "embed",
+              url: `https://archive.org/embed/${encodeURIComponent(iaId)}`,
+              originalUrl: book.readUrl,
+              book,
+            },
+            { headers: cacheHeaders }
+          );
         }
       } catch {
         // Fall through
@@ -44,12 +54,15 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
     if ((book.source === "oapen" || book.source === "doab") &&
       book.format === "pdf" && !book.external && book.readUrl) {
-      return NextResponse.json({
-        format: "pdf",
-        url: `/api/pdf/${book.source}/${encodeURIComponent(String(book.id))}`,
-        originalUrl: book.readUrl,
-        book,
-      });
+      return NextResponse.json(
+        {
+          format: "pdf",
+          url: `/api/pdf/${book.source}/${encodeURIComponent(String(book.id))}`,
+          originalUrl: book.readUrl,
+          book,
+        },
+        { headers: cacheHeaders }
+      );
     }
 
     return NextResponse.json({ error: "This book has no readable online file." }, { status: 404 });

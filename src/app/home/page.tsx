@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
@@ -48,11 +48,11 @@ function BookBrowseCard({ book }: { book: BrowseBook }) {
   const isPdf = book.format === "pdf";
   const canRead = isReadableBook(book);
   const detailHref = `/book/${book.source}/${encodeURIComponent(String(book.id))}`;
-  const readHref = `/reader/${book.source}/${encodeURIComponent(String(book.id))}`;
   return (
     <article className="group flex flex-col gap-2.5" aria-label={`${book.title} by ${book.author}`}>
-      <div
-        className="relative h-60 w-full overflow-hidden rounded-lg border border-zinc-200/80 shadow-xs transition-transform duration-150 group-hover:-translate-y-1 dark:border-zinc-800"
+      <Link
+        href={detailHref}
+        className="relative block h-60 w-full overflow-hidden rounded-lg border border-zinc-200/80 shadow-xs transition-transform duration-150 group-hover:-translate-y-1 dark:border-zinc-800"
         style={{ background: "#f4f4f5" }}
       >
         {book.cover && (
@@ -71,31 +71,21 @@ function BookBrowseCard({ book }: { book: BrowseBook }) {
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-3">
           <p className="line-clamp-2 font-serif text-xs font-semibold leading-tight text-white">{book.title}</p>
         </div>
-      </div>
+      </Link>
       <Link href={detailHref} className="flex flex-col gap-0.5">
-        <h3 className="line-clamp-2 font-serif text-sm font-medium leading-snug text-zinc-900 dark:text-zinc-100">{book.title}</h3>
+        <h3 className="line-clamp-2 font-serif text-sm font-medium leading-snug text-zinc-900 dark:text-zinc-100 group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors">{book.title}</h3>
         <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">{book.author}</p>
         <span className="mt-1 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
-          {access === "borrowable" ? "Borrowable" : access === "no_ebook" ? "Details only" : "Free"}
+          {access === "borrowable" ? "Borrowable" : access === "no_ebook" ? "Details only" : "Free access"}
         </span>
       </Link>
-      {book.external && book.readUrl ? (
-        <a href={book.readUrl} target="_blank" rel="noopener noreferrer"
-          className="inline-flex items-center justify-center gap-1.5 rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 dark:border-zinc-700 dark:text-zinc-200">
-          <span>Publisher</span><ExternalLink className="size-3" aria-hidden="true" />
-        </a>
-      ) : canRead ? (
-        <Link href={readHref}
-          className="inline-flex items-center justify-center gap-1.5 rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white shadow-xs hover:bg-emerald-800 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2 dark:bg-emerald-600 dark:hover:bg-emerald-500">
-          <BookOpen className="size-3.5" aria-hidden="true" />
-          <span>{isPdf ? "Read PDF" : "Read"}</span>
-          {!isPdf && <ExternalLink className="size-3" aria-hidden="true" />}
-        </Link>
-      ) : access === "borrowable" && book.readUrl ? (
-        <a href={book.readUrl} target="_blank" rel="noopener noreferrer" className="text-center text-xs text-emerald-700 underline">Borrow on Internet Archive</a>
-      ) : (
-        <span className="text-center text-xs text-zinc-400 dark:text-zinc-600">Info only</span>
-      )}
+      <Link
+        href={detailHref}
+        className="inline-flex items-center justify-center gap-1.5 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-800 dark:text-zinc-200 shadow-xs hover:border-emerald-600 dark:hover:border-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-400 active:scale-[0.98] transition-all"
+      >
+        <BookOpen className="size-3.5" aria-hidden="true" />
+        <span>View Book</span>
+      </Link>
     </article>
   );
 }

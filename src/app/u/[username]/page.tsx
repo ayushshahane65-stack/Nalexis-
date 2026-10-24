@@ -7,8 +7,8 @@ interface PageProps {
 export async function generateMetadata({ params }: PageProps) {
   const { username } = await params;
   return {
-    title: `@${decodeURIComponent(username)} | Living Library - Nalexis`,
-    description: `Explore the public Living Library, bookshelves, and reflections of @${decodeURIComponent(username)}.`,
+    title: `@${decodeURIComponent(username)} | Literary Profile - Nalexis`,
+    description: `Explore the literary profile, bookshelves, and reflections of @${decodeURIComponent(username)}.`,
   };
 }
 

@@ -24,7 +24,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Invalid category." }, { status: 400 });
   }
 
-  const academicQuery = category === "textbooks & academic" ? "textbooks academic" : category;
+  const academicQuery = category === "textbooks & academic" ? "academic textbooks" : category;
   const gutCategory = category === "textbooks & academic" ? "education" : category;
 
   const [gutResult, olResult, oapenResult, doabResult] = await Promise.allSettled([
@@ -34,29 +34,42 @@ export async function GET(request: Request) {
     browseDoab(academicQuery, page),
   ]);
 
-  if (oapenResult.status === "rejected") console.warn("OAPEN browse failed:", oapenResult.reason);
-  if (doabResult.status === "rejected") console.warn("DOAB browse failed:", doabResult.reason);
-  if (gutResult.status === "rejected") console.warn("Gutendex browse failed:", gutResult.reason);
-  if (olResult.status === "rejected") console.warn("OpenLibrary browse failed:", olResult.reason);
+  if (oapenResult.status === "rejected") {
+    console.warn(`[Browse API] OAPEN browse failed for "${category}":`, oapenResult.reason);
+  }
+  if (doabResult.status === "rejected") {
+    console.warn(`[Browse API] DOAB browse failed for "${category}":`, doabResult.reason);
+  }
+  if (gutResult.status === "rejected") {
+    console.warn(`[Browse API] Gutendex browse failed for "${category}":`, gutResult.reason);
+  }
+  if (olResult.status === "rejected") {
+    console.warn(`[Browse API] OpenLibrary browse failed for "${category}":`, olResult.reason);
+  }
 
   const gutBooks: GutenbergBook[] =
-    gutResult.status === "fulfilled" ? gutResult.value : [];
+    gutResult.status === "fulfilled" && Array.isArray(gutResult.value) ? gutResult.value : [];
   const olBooks: OpenLibraryBook[] =
-    olResult.status === "fulfilled" ? olResult.value : [];
+    olResult.status === "fulfilled" && Array.isArray(olResult.value) ? olResult.value : [];
   const oapenBooks: AcademicBook[] =
-    oapenResult.status === "fulfilled" ? oapenResult.value : [];
+    oapenResult.status === "fulfilled" && Array.isArray(oapenResult.value) ? oapenResult.value : [];
   const doabBooks: AcademicBook[] =
-    doabResult.status === "fulfilled" ? doabResult.value : [];
+    doabResult.status === "fulfilled" && Array.isArray(doabResult.value) ? doabResult.value : [];
 
   const merged: BrowseBook[] = [...gutBooks, ...olBooks, ...oapenBooks, ...doabBooks];
 
-  const seen = new Set<string>();
+  // Deduplicate exact same source items without deleting distinct editions
+  const seenIds = new Set<string>();
   const deduped = merged.filter((b) => {
-    const key = `${b.title.toLowerCase()}|${b.author.toLowerCase()}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
+    const key = `${b.source}:${b.id}`;
+    if (seenIds.has(key)) return false;
+    seenIds.add(key);
     return true;
   });
 
-  return NextResponse.json(deduped);
+  return NextResponse.json(deduped, {
+    headers: {
+      "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+    },
+  });
 }

@@ -123,6 +123,33 @@ export default function BookPage({ params }: PageProps) {
 
   // 2. Fetch User Library Status for this Book
   const checkLibraryState = useCallback(() => {
+    // 1. Check local storage first
+    let foundLocally = false;
+    try {
+      // Import dynamically or read local library
+      const raw = localStorage.getItem("nalexis_local_library_books");
+      if (raw) {
+        const localBooks = JSON.parse(raw) as Array<{
+          source: string;
+          book_id: string;
+          status: LibraryBookStatus;
+          is_favourite?: boolean;
+          shelf_ids?: string[];
+        }>;
+        const found = localBooks.find(
+          (b) => b.source === source && String(b.book_id) === String(id)
+        );
+        if (found) {
+          foundLocally = true;
+          setIsInLibrary(true);
+          setCurrentLibraryStatus(found.status);
+          setIsFavourite(Boolean(found.is_favourite));
+          setShelfIds(found.shelf_ids ?? []);
+        }
+      }
+    } catch {}
+
+    // 2. Also check cloud API
     fetch("/api/library")
       .then((res) => (res.ok ? res.json() : []))
       .then((books: Array<{ source: string; book_id: string; status: LibraryBookStatus; is_favourite?: boolean; shelf_ids?: string[] }>) => {
@@ -134,7 +161,7 @@ export default function BookPage({ params }: PageProps) {
           setCurrentLibraryStatus(found.status);
           setIsFavourite(Boolean(found.is_favourite));
           setShelfIds(found.shelf_ids ?? []);
-        } else {
+        } else if (!foundLocally) {
           setIsInLibrary(false);
           setIsFavourite(false);
           setShelfIds([]);
@@ -148,6 +175,34 @@ export default function BookPage({ params }: PageProps) {
     checkLibraryState();
   }, [load, checkLibraryState]);
 
+  // 3. Background Pre-fetch to eliminate buffer time when clicking "Start Reading"
+  const [isPreloaded, setIsPreloaded] = useState(false);
+
+  useEffect(() => {
+    if (!book || !isReadableBook(book)) return;
+    const cacheKey = `nalexis_prefetched_read_${source}_${id}`;
+
+    try {
+      if (sessionStorage.getItem(cacheKey)) {
+        setIsPreloaded(true);
+        return;
+      }
+    } catch {}
+
+    // Silently pre-fetch reader content in the background while user reads synopsis
+    fetch(`/api/read/${source}/${encodeURIComponent(id)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && !data.error) {
+          try {
+            sessionStorage.setItem(cacheKey, JSON.stringify(data));
+          } catch {}
+          setIsPreloaded(true);
+        }
+      })
+      .catch(() => {});
+  }, [book, source, id]);
+
   // Handle Favourite Toggle
   const toggleFavourite = async () => {
     if (!book) return;
@@ -155,10 +210,36 @@ export default function BookPage({ params }: PageProps) {
     setAuthError(null);
     const newFavState = !isFavourite;
 
+    // Immediately update UI and local storage
+    setIsFavourite(newFavState);
+    setIsInLibrary(true);
+    try {
+      const raw = localStorage.getItem("nalexis_local_library_books");
+      const list = raw ? JSON.parse(raw) : [];
+      const idx = list.findIndex((b: any) => b.source === book.source && String(b.book_id) === String(book.id));
+      if (idx >= 0) {
+        list[idx].is_favourite = newFavState;
+        list[idx].updated_at = new Date().toISOString();
+      } else {
+        list.unshift({
+          source: book.source,
+          book_id: String(book.id),
+          status: currentLibraryStatus || "want_to_read",
+          progress: 0,
+          is_favourite: newFavState,
+          shelf_ids: shelfIds,
+          title: book.title,
+          author: book.author,
+          cover: book.cover,
+          updated_at: new Date().toISOString(),
+        });
+      }
+      localStorage.setItem("nalexis_local_library_books", JSON.stringify(list));
+    } catch {}
+
     try {
       if (isInLibrary) {
-        // Update existing library book
-        const res = await fetch("/api/library", {
+        await fetch("/api/library", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -167,15 +248,8 @@ export default function BookPage({ params }: PageProps) {
             is_favourite: newFavState,
           }),
         });
-        if (res.status === 401) {
-          setAuthError("Sign in to mark books as favourite.");
-          return;
-        }
-        if (!res.ok) throw new Error("Could not update favourite status");
-        setIsFavourite(newFavState);
       } else {
-        // Add to library as want_to_read and marked favourite
-        const res = await fetch("/api/library", {
+        await fetch("/api/library", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -185,18 +259,9 @@ export default function BookPage({ params }: PageProps) {
             is_favourite: newFavState,
           }),
         });
-        if (res.status === 401) {
-          setAuthError("Sign in to mark books as favourite.");
-          return;
-        }
-        if (!res.ok) throw new Error("Could not add book to favourites");
-        setIsInLibrary(true);
-        setIsFavourite(newFavState);
-        setCurrentLibraryStatus("want_to_read");
       }
-    } catch (err: unknown) {
-      console.error("Favourite toggle error:", err);
-      setAuthError("Could not update favourite. Please try again.");
+    } catch {
+      // Local copy is already saved!
     } finally {
       setIsFavLoading(false);
     }
@@ -438,7 +503,10 @@ export default function BookPage({ params }: PageProps) {
                   className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-5 py-2.5 text-xs font-semibold text-white shadow-xs hover:bg-emerald-800 active:scale-95 transition-all"
                 >
                   <BookOpen className="size-4" />
-                  {book.format === "pdf" ? "Read PDF" : "Start Reading"}
+                  <span>{book.format === "pdf" ? "Read PDF" : "Start Reading"}</span>
+                  {isPreloaded && (
+                    <span className="flex size-1.5 rounded-full bg-emerald-300 animate-pulse" title="Ready to read instantly" />
+                  )}
                 </Link>
               )}
 

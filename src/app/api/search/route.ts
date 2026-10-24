@@ -19,37 +19,63 @@ export async function GET(request: Request) {
     );
   }
 
+  const query = q.trim();
+
+  // Run all independent catalog searches concurrently
   const [gutResult, olResult, oapenResult, doabResult] = await Promise.allSettled([
-    searchGutendex(q),
-    searchOpenLibrary(q),
-    searchOapen(q),
-    searchDoab(q),
+    searchGutendex(query),
+    searchOpenLibrary(query),
+    searchOapen(query),
+    searchDoab(query),
   ]);
 
-  if (oapenResult.status === "rejected") console.error("OAPEN search failed:", oapenResult.reason);
-  if (doabResult.status === "rejected") console.error("DOAB search failed:", doabResult.reason);
-  if ([gutResult, olResult, oapenResult, doabResult].every((result) => result.status === "rejected")) {
-    return NextResponse.json({ error: "All book sources are unavailable." }, { status: 502 });
+  // Log provider failures clearly on the server
+  if (gutResult.status === "rejected") {
+    console.error(`[Search API] Gutenberg search failed for "${query}":`, gutResult.reason);
+  }
+  if (olResult.status === "rejected") {
+    console.error(`[Search API] Open Library search failed for "${query}":`, olResult.reason);
+  }
+  if (oapenResult.status === "rejected") {
+    console.error(`[Search API] OAPEN search failed for "${query}":`, oapenResult.reason);
+  }
+  if (doabResult.status === "rejected") {
+    console.error(`[Search API] DOAB search failed for "${query}":`, doabResult.reason);
+  }
+
+  // If every single provider rejected with a network/critical failure
+  const allRejected = [gutResult, olResult, oapenResult, doabResult].every(
+    (res) => res.status === "rejected"
+  );
+  if (allRejected) {
+    return NextResponse.json({ error: "All book sources are currently unavailable." }, { status: 502 });
   }
 
   const gutBooks: GutenbergBook[] =
-    gutResult.status === "fulfilled" ? gutResult.value : [];
+    gutResult.status === "fulfilled" && Array.isArray(gutResult.value) ? gutResult.value : [];
   const olBooks: OpenLibraryBook[] =
-    olResult.status === "fulfilled" ? olResult.value : [];
+    olResult.status === "fulfilled" && Array.isArray(olResult.value) ? olResult.value : [];
   const oapenBooks: AcademicBook[] =
-    oapenResult.status === "fulfilled" ? oapenResult.value : [];
+    oapenResult.status === "fulfilled" && Array.isArray(oapenResult.value) ? oapenResult.value : [];
   const doabBooks: AcademicBook[] =
-    doabResult.status === "fulfilled" ? doabResult.value : [];
+    doabResult.status === "fulfilled" && Array.isArray(doabResult.value) ? doabResult.value : [];
 
+  // Interleave and merge results from all providers
   const merged: SearchBook[] = [...gutBooks, ...olBooks, ...oapenBooks, ...doabBooks];
 
-  const seen = new Set<string>();
+  // Deduplicate exact same source items and exact duplicate editions,
+  // without deleting differing editions/formats across providers
+  const seenIds = new Set<string>();
   const deduped = merged.filter((b) => {
-    const key = `${b.title.toLowerCase()}|${b.author.toLowerCase()}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
+    const key = `${b.source}:${b.id}`;
+    if (seenIds.has(key)) return false;
+    seenIds.add(key);
     return true;
   });
 
-  return NextResponse.json(deduped);
+  return NextResponse.json(deduped, {
+    headers: {
+      "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+    },
+  });
 }

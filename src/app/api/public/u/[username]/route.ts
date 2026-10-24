@@ -62,7 +62,45 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     books: shelfBooksMap.get(shelf.id) ?? [],
   }));
 
-  // 3. Fetch ONLY explicitly shared reflections
+  // 3. Showcase Books according to user privacy flags
+  const showcaseFavourites = profile.showcase_favourites ?? true;
+  const showcaseReading = profile.showcase_currently_reading ?? true;
+  const showcaseCompleted = profile.showcase_completed ?? true;
+
+  let favouriteBooks: any[] = [];
+  let currentlyReadingBooks: any[] = [];
+  let completedBooks: any[] = [];
+
+  if (showcaseFavourites) {
+    const { data: favs } = await (supabase.from("library_books") as any)
+      .select("source, book_id, rating, is_favourite, created_at")
+      .eq("user_id", userId)
+      .eq("is_favourite", true)
+      .limit(12);
+    favouriteBooks = favs ?? [];
+  }
+
+  if (showcaseReading) {
+    const { data: reading } = await (supabase.from("library_books") as any)
+      .select("source, book_id, progress, started_at")
+      .eq("user_id", userId)
+      .eq("status", "currently_reading")
+      .order("started_at", { ascending: false })
+      .limit(8);
+    currentlyReadingBooks = reading ?? [];
+  }
+
+  if (showcaseCompleted) {
+    const { data: finished } = await (supabase.from("library_books") as any)
+      .select("source, book_id, rating, finished_at")
+      .eq("user_id", userId)
+      .eq("status", "finished")
+      .order("finished_at", { ascending: false })
+      .limit(12);
+    completedBooks = finished ?? [];
+  }
+
+  // 4. Fetch ONLY explicitly shared reflections
   const { data: sharedReflections } = await (supabase.from("library_books") as any)
     .select("source, book_id, rating, reflection, finished_at")
     .eq("user_id", userId)
@@ -70,14 +108,18 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     .not("reflection", "is", null)
     .order("finished_at", { ascending: false });
 
-  // 4. Fetch ONLY explicitly shared quotes
-  const { data: sharedQuotes } = await (supabase.from("quotes") as any)
-    .select("id, source, book_id, text, note, created_at")
-    .eq("user_id", userId)
-    .eq("is_shared", true)
-    .order("created_at", { ascending: false });
+  // 5. Fetch ONLY explicitly shared quotes (if showcase_quotes is enabled)
+  let sharedQuotes: any[] = [];
+  if (profile.showcase_quotes ?? true) {
+    const { data: quotes } = await (supabase.from("quotes") as any)
+      .select("id, source, book_id, text, note, created_at")
+      .eq("user_id", userId)
+      .eq("is_shared", true)
+      .order("created_at", { ascending: false });
+    sharedQuotes = quotes ?? [];
+  }
 
-  // 5. Compute real public stats (Imported EPUBs count is NEVER exposed)
+  // 6. Compute real public stats
   const [completedCount, quotesCount] = await Promise.all([
     (supabase.from("library_books") as any)
       .select("id", { count: "exact", head: true })
@@ -89,13 +131,17 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       .eq("is_shared", true),
   ]);
 
-  // 6. Safe public journey milestones (only finished_book & reached_goal)
-  const { data: publicJourney } = await (supabase.from("journey_events") as any)
-    .select("event_type, source, book_id, created_at")
-    .eq("user_id", userId)
-    .in("event_type", ["finished_book", "reached_goal"])
-    .order("created_at", { ascending: false })
-    .limit(15);
+  // 7. Safe public journey milestones (if showcase_journey is enabled)
+  let publicJourney: any[] = [];
+  if (profile.showcase_journey ?? true) {
+    const { data: journey } = await (supabase.from("journey_events") as any)
+      .select("event_type, source, book_id, created_at")
+      .eq("user_id", userId)
+      .in("event_type", ["finished_book", "reached_goal", "saved_quote"])
+      .order("created_at", { ascending: false })
+      .limit(15);
+    publicJourney = journey ?? [];
+  }
 
   return NextResponse.json({
     profile: {
@@ -103,19 +149,45 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       display_name: profile.display_name,
       bio: profile.bio,
       avatar_url: profile.avatar_url,
-      avatar_color: profile.avatar_color,
+      avatar_color: profile.avatar_color ?? "#3F5F52",
+      cover_image: profile.cover_image ?? null,
+      reading_philosophy: profile.reading_philosophy ?? null,
+      literary_interests: profile.literary_interests ?? [],
       favourite_genres: profile.favourite_genres ?? [],
       favourite_authors: profile.favourite_authors ?? [],
       yearly_goal: profile.yearly_goal ?? 12,
       goal_year: profile.goal_year ?? new Date().getFullYear(),
+      featured_book: profile.featured_book_title ? {
+        source: profile.featured_book_source,
+        id: profile.featured_book_id,
+        title: profile.featured_book_title,
+        author: profile.featured_book_author,
+        cover: profile.featured_book_cover,
+      } : null,
+      featured_shelf_id: profile.featured_shelf_id ?? null,
+      theme_accent: profile.theme_accent ?? "emerald",
+      showcase_flags: {
+        favourites: showcaseFavourites,
+        currently_reading: showcaseReading,
+        completed: showcaseCompleted,
+        quotes: profile.showcase_quotes ?? true,
+        journey: profile.showcase_journey ?? true,
+      },
     },
     stats: {
       books_completed: completedCount.count ?? 0,
+      public_shelves: enrichedPublicShelves.length,
       shared_quotes: quotesCount.count ?? 0,
+      favourite_books: favouriteBooks.length,
     },
     shelves: enrichedPublicShelves,
+    showcase: {
+      favourites: favouriteBooks,
+      currently_reading: currentlyReadingBooks,
+      completed: completedBooks,
+    },
     reflections: sharedReflections ?? [],
-    quotes: sharedQuotes ?? [],
-    journey: publicJourney ?? [],
+    quotes: sharedQuotes,
+    journey: publicJourney,
   });
 }
